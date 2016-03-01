@@ -279,7 +279,8 @@ def state_transitions(x, states):
             prv = cur
             prv_idx = cur_idx
 
-    return np.array(switch_points), np.array(transitions)
+    return np.array(switch_points, dtype="int"), \
+        np.array(transitions, dtype="int")
 
 
 def tabulate_state_transitions(x, states, pos):
@@ -295,15 +296,19 @@ def tabulate_state_transitions(x, states, pos):
     assert x.size == pos.size
 
     switch_points, transitions = state_transitions(x, states)
-    switch_positions = np.take(pos, switch_points)
-    data = [('lidx', switch_points[:, 0]),
-            ('ridx', switch_points[:, 1]),
-            ('lpos', switch_positions[:, 0]),
-            ('rpos', switch_positions[:, 1]),
-            ('lval', transitions[:, 0]),
-            ('rval', transitions[:, 1])]
-    df = pandas.DataFrame.from_items(data)
-    return df
+    if switch_points.size == 0:
+        return pandas.DataFrame(columns=['lidx', 'ridx', 'lpos', 'rpos',
+                                         'lval', 'rval'])
+    else:
+        switch_positions = np.take(pos, switch_points)
+        data = [('lidx', switch_points[:, 0]),
+                ('ridx', switch_points[:, 1]),
+                ('lpos', switch_positions[:, 0]),
+                ('rpos', switch_positions[:, 1]),
+                ('lval', transitions[:, 0]),
+                ('rval', transitions[:, 1])]
+        df = pandas.DataFrame.from_items(data)
+        return df
 
 
 def tabulate_state_blocks(x, states, pos):
@@ -363,18 +368,28 @@ def tabulate_state_blocks(x, states, pos):
                  block_length_min, block_length_max, block_is_marginal)
         blocks.append(block)
 
-    # special case the last block
-    previous_switch = df_switches.iloc[-1]
-    block_start_min_idx = previous_switch.lidx
-    block_start_max_idx = previous_switch.ridx
-    block_start_min_pos = previous_switch.lpos
-    block_start_max_pos = previous_switch.rpos
+    # special case the last block:
+    if df_switches.shape[0] > 0:
+        previous_switch = df_switches.iloc[-1]
+        block_start_min_idx = previous_switch.lidx
+        block_start_max_idx = previous_switch.ridx
+        block_start_min_pos = previous_switch.lpos
+        block_start_max_pos = previous_switch.rpos
+        block_state = previous_switch.rval
+    else:
+        block_start_min_idx = 0
+        block_start_max_idx = 0
+        block_start_min_pos = pos[0]
+        block_start_max_pos = pos[0]
+        # if only one block: only 1 state
+        block_state = np.compress(np.in1d(states, x), states)[0]
+
     block_is_marginal = True
     block_stop_min_idx = n-1
     block_stop_max_idx = n-1
     block_stop_min_pos = pos[-1]
     block_stop_max_pos = pos[-1]
-    block_state = previous_switch.rval
+
     y = x[block_start_max_idx:block_stop_min_idx+1]
     block_support = np.count_nonzero(y == block_state)
     block_size_min = block_stop_min_idx - block_start_max_idx + 1
